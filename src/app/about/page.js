@@ -34,8 +34,17 @@ export default function Home() {
         }),
       });
 
+      const contentType = response.headers.get("content-type") || "";
+
+      if (!contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(text);
+      }
+
       const data = await response.json();
 
+      console.log("API RESPONSE:", data);
+      
       if (!response.ok) {
         throw new Error(data.error || "API request failed");
       }
@@ -44,7 +53,8 @@ export default function Home() {
         ...updatedMessages,
         {
           role: "assistant",
-          content: data.text,
+          content: data.text || "No response generated.",
+          toolResults: data.toolResults || [],
         },
       ]);
     } catch (error) {
@@ -53,6 +63,7 @@ export default function Home() {
         {
           role: "assistant",
           content: `Error: ${error.message}`,
+          error: true,
         },
       ]);
     } finally {
@@ -69,7 +80,11 @@ export default function Home() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <h1>AI Chat Interface</h1>
+      <h1>AI Qualification Chat</h1>
+
+      <p style={{ color: "#666" }}>
+        Ask questions or qualify a lead and calculate their lead score.
+      </p>
 
       <div
         style={{
@@ -90,13 +105,82 @@ export default function Home() {
               key={index}
               style={{
                 marginBottom: "20px",
+                padding: "15px",
+                borderRadius: "8px",
+                background:
+                  message.role === "user" ? "#f1f5f9" : "#fafafa",
               }}
             >
               <strong>
                 {message.role === "user" ? "You" : "AI"}:
               </strong>
 
-              <p>{message.content}</p>
+              <p
+                style={{
+                  whiteSpace: "pre-wrap",
+                  lineHeight: "1.6",
+                }}
+              >
+                {message.content}
+              </p>
+
+              {message.toolResults?.length > 0 &&
+                message.toolResults.map((toolResult, toolIndex) => {
+                  if (
+                    toolResult.toolName === "leadScore" &&
+                    toolResult.output
+                  ) {
+                    const result = toolResult.output;
+
+                    return (
+                      <div
+                        key={toolIndex}
+                        style={{
+                          marginTop: "15px",
+                          padding: "18px",
+                          border: "1px solid #ddd",
+                          borderRadius: "10px",
+                          background: "white",
+                        }}
+                      >
+                        <h3>Lead Qualification Result</h3>
+
+                        <p>
+                          <strong>Name:</strong> {result.name}
+                        </p>
+
+                        <p>
+                          <strong>Company:</strong> {result.company}
+                        </p>
+
+                        <p>
+                          <strong>Score:</strong> {result.score}/100
+                        </p>
+
+                        <p>
+                          <strong>Status:</strong> {result.label}
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })}
+
+              {message.error && (
+                <div
+                  style={{
+                    marginTop: "10px",
+                    padding: "12px",
+                    border: "1px solid #fca5a5",
+                    borderRadius: "8px",
+                    background: "#fef2f2",
+                    color: "#b91c1c",
+                  }}
+                >
+                  Something went wrong. Please try again.
+                </div>
+              )}
             </div>
           ))
         )}
@@ -134,6 +218,7 @@ export default function Home() {
           disabled={loading}
           style={{
             padding: "12px 20px",
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Thinking..." : "Send"}
