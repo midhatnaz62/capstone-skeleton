@@ -7,17 +7,15 @@ export default function Home() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-
-    if (!input.trim() || loading) return;
+  async function sendMessage(messageText, previousMessages = messages) {
+    if (!messageText.trim() || loading) return;
 
     const userMessage = {
       role: "user",
-      content: input,
+      content: messageText,
     };
 
-    const updatedMessages = [...messages, userMessage];
+    const updatedMessages = [...previousMessages, userMessage];
 
     setMessages(updatedMessages);
     setInput("");
@@ -43,11 +41,12 @@ export default function Home() {
         }),
       });
 
-      const contentType = response.headers.get("content-type") || "";
+      const contentType =
+        response.headers.get("content-type") || "";
 
       if (!contentType.includes("application/json")) {
         const text = await response.text();
-        throw new Error(text);
+        throw new Error(text || "Server returned an invalid response.");
       }
 
       const data = await response.json();
@@ -55,44 +54,74 @@ export default function Home() {
       console.log("API RESPONSE:", data);
 
       if (!response.ok) {
-        throw new Error(data.error || "API request failed");
+        throw new Error(
+          data.error || "The AI request failed. Please try again."
+        );
       }
 
-      // TOOL OUTPUT AVAILABLE STATE
+      const isValidationError =
+        data.text?.startsWith("Invalid lead information.");
+
+      // SUCCESS / TOOL OUTPUT
       setMessages([
         ...updatedMessages,
         {
           role: "assistant",
           content: data.text || "",
           toolResults: data.toolResults || [],
-          toolState:
-            data.text?.startsWith("Invalid lead information.")
-              ? "output-error"
-              : data.toolResults?.length > 0
-                ? "output-available"
-                : "input-available",
+          toolState: isValidationError
+            ? "output-error"
+            : data.toolResults?.length > 0
+              ? "output-available"
+              : "input-available",
         },
       ]);
     } catch (error) {
-      // TOOL OUTPUT ERROR STATE
+      console.error("CHAT ERROR:", error);
+
+      // DESIGNED FAILURE STATE
       setMessages([
         ...updatedMessages,
         {
           role: "assistant",
-          content: data.text || "",
-          toolResults: data.toolResults || [],
-          toolState:
-            data.text?.startsWith("Invalid lead information.")
-              ? "output-error"
-              : data.toolResults?.length > 0
-                ? "output-available"
-                : "input-available",
-          errorMessage: data.text,
+          content: "",
+          toolState: "request-error",
+          errorMessage:
+            error?.message ||
+            "Something went wrong. Please try again.",
+          retryMessage: messageText,
         },
       ]);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+
+    if (!input.trim() || loading) return;
+
+    await sendMessage(input);
+  }
+
+  async function handleRetry(message) {
+    if (!message.retryMessage || loading) return;
+
+    // Remove the failed user + error messages before retrying
+    const failedIndex = messages.indexOf(message);
+
+    const messagesBeforeFailedRequest =
+      failedIndex > 0
+        ? messages
+            .slice(0, failedIndex)
+            .filter((item) => item.role === "user" || item.role === "assistant")
+        : [];
+
+    await sendMessage(
+      message.retryMessage,
+      messagesBeforeFailedRequest
+    );
   }
 
   return (
@@ -104,7 +133,7 @@ export default function Home() {
         fontFamily: "Arial, sans-serif",
       }}
     >
-      <h1>AI Qualification Chat</h1>
+      <h2>AI Qualification Chat</h2>
 
       <p style={{ color: "#666" }}>
         Ask the AI to qualify a lead and calculate a lead score.
@@ -119,10 +148,23 @@ export default function Home() {
           marginBottom: "20px",
         }}
       >
+        {/* EMPTY STATE */}
         {messages.length === 0 ? (
-          <p style={{ color: "#777" }}>
-            Start a conversation...
-          </p>
+          <div
+            style={{
+              padding: "30px 10px",
+              textAlign: "center",
+              color: "#777",
+            }}
+          >
+            <h3 style={{ marginBottom: "8px" }}>
+              Start a conversation...
+            </h3>
+
+            <p style={{ margin: 0 }}>
+              Ask a question or enter lead information to get started.
+            </p>
+          </div>
         ) : (
           messages.map((message, index) => (
             <div
@@ -138,12 +180,14 @@ export default function Home() {
               }}
             >
               <strong>
-                {message.role === "user" ? "You" : "AI"}:
+                {message.role === "user" ? "You:" : "AI:"}
               </strong>
 
               {/* USER MESSAGE */}
               {message.role === "user" && (
-                <p>{message.content}</p>
+                <p style={{ whiteSpace: "pre-wrap" }}>
+                  {message.content}
+                </p>
               )}
 
               {/* TOOL INPUT STREAMING */}
@@ -166,7 +210,9 @@ export default function Home() {
               {message.toolState === "input-available" && (
                 <>
                   {message.content && (
-                    <p>{message.content}</p>
+                    <p style={{ whiteSpace: "pre-wrap" }}>
+                      {message.content}
+                    </p>
                   )}
 
                   <div
@@ -188,6 +234,7 @@ export default function Home() {
               {/* NORMAL AI RESPONSE */}
               {message.role === "assistant" &&
                 message.toolState !== "output-error" &&
+                message.toolState !== "request-error" &&
                 message.toolState !== "input-streaming" &&
                 message.toolState !== "input-available" &&
                 message.content && (
@@ -261,7 +308,7 @@ export default function Home() {
                   }
                 )}
 
-              {/* TOOL OUTPUT ERROR */}
+              {/* TOOL VALIDATION ERROR */}
               {message.toolState === "output-error" && (
                 <div
                   style={{
@@ -286,6 +333,51 @@ export default function Home() {
                       message.content ||
                       "The tool could not complete the request."}
                   </p>
+                </div>
+              )}
+
+              {/* NETWORK / API FAILURE */}
+              {message.toolState === "request-error" && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "16px",
+                    borderRadius: "10px",
+                    background: "#fff7ed",
+                    border: "2px solid #fdba74",
+                    color: "#c2410c",
+                  }}
+                >
+                  <strong>⚠ Something went wrong</strong>
+
+                  <p
+                    style={{
+                      marginTop: "8px",
+                      marginBottom: "12px",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {message.errorMessage ||
+                      "The request could not be completed."}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRetry(message)}
+                    disabled={loading}
+                    style={{
+                      padding: "9px 16px",
+                      border: "none",
+                      borderRadius: "6px",
+                      background: "#ea580c",
+                      color: "white",
+                      cursor: loading
+                        ? "not-allowed"
+                        : "pointer",
+                    }}
+                  >
+                    🔄 Retry
+                  </button>
                 </div>
               )}
             </div>
