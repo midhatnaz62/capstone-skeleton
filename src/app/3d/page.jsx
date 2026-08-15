@@ -2,14 +2,14 @@
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function Cube({ color }) {
+function Cube({ color, reducedMotion }) {
   const meshRef = useRef();
   const [active, setActive] = useState(false);
 
   useFrame(() => {
-    if (meshRef.current) {
+    if (meshRef.current && !reducedMotion) {
       meshRef.current.rotation.x += active ? 0.03 : 0.01;
       meshRef.current.rotation.y += active ? 0.03 : 0.01;
     }
@@ -43,6 +43,25 @@ function Platform() {
 
 export default function ThreeDPage() {
   const [color, setColor] = useState("#3b82f6");
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      "(prefers-reduced-motion: reduce)"
+    );
+
+    const updateMotionPreference = () => {
+      setReducedMotion(mediaQuery.matches);
+    };
+
+    updateMotionPreference();
+
+    mediaQuery.addEventListener("change", updateMotionPreference);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateMotionPreference);
+    };
+  }, []);
 
   return (
     <main
@@ -60,6 +79,7 @@ export default function ThreeDPage() {
           left: "30px",
           zIndex: 10,
           color: "white",
+          maxWidth: "600px",
         }}
       >
         <h1>Interactive 3D Experience</h1>
@@ -67,13 +87,26 @@ export default function ThreeDPage() {
         <p>
           Drag to rotate • Scroll to zoom • Change the cube color
         </p>
-        
+
         <p>
           Keyboard users can use the controls, and the color buttons provide
           accessible labels for the 3D interaction.
         </p>
 
-        <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
+        <p>
+          {reducedMotion
+            ? "Reduced motion is enabled, so automatic animation is disabled."
+            : "Automatic animation is enabled."}
+        </p>
+
+        <div
+          style={{
+            display: "flex",
+            gap: "10px",
+            marginTop: "15px",
+            flexWrap: "wrap",
+          }}
+        >
           <button
             onClick={() => setColor("#3b82f6")}
             style={{
@@ -119,7 +152,10 @@ export default function ThreeDPage() {
           intensity={1}
         />
 
-        <Cube color={color} />
+        <Cube
+          color={color}
+          reducedMotion={reducedMotion}
+        />
 
         <Platform />
 
