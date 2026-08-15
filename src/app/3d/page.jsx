@@ -67,6 +67,11 @@ export default function ThreeDPage() {
         <p>
           Drag to rotate • Scroll to zoom • Change the cube color
         </p>
+        
+        <p>
+          Keyboard users can use the controls, and the color buttons provide
+          accessible labels for the 3D interaction.
+        </p>
 
         <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
           <button
