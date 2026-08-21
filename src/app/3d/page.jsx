@@ -179,8 +179,38 @@ export default function ThreeDPage() {
               fontWeight: 800,
             }}
           >
-            Signature Hero
+            Interactive 3D Experience
           </h1>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: "10px",
+              marginTop: "24px",
+            }}
+          >
+            <button
+              type="button"
+              style={{ padding: "10px 18px", cursor: "pointer" }}
+            >
+              Blue
+            </button>
+
+            <button
+              type="button"
+              style={{ padding: "10px 18px", cursor: "pointer" }}
+            >
+              Purple
+            </button>
+
+            <button
+              type="button"
+              style={{ padding: "10px 18px", cursor: "pointer" }}
+            >
+              Teal
+            </button>
+          </div>
 
           <p
             style={{
