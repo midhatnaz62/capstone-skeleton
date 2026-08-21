@@ -1,48 +1,54 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
-import { useEffect, useRef, useState } from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-function Cube({ color, reducedMotion }) {
-  const meshRef = useRef();
-  const [active, setActive] = useState(false);
+const vertexShader = `
+  varying vec2 vUv;
 
-  useFrame(() => {
-    if (meshRef.current && !reducedMotion) {
-      meshRef.current.rotation.x += active ? 0.03 : 0.01;
-      meshRef.current.rotation.y += active ? 0.03 : 0.01;
-    }
-  });
+  void main() {
+    vUv = uv;
+    gl_Position = vec4(position, 1.0);
+  }
+`;
 
-  return (
-    <mesh
-      ref={meshRef}
-      position={[0, 1.5, 0]}
-      scale={active ? 1.2 : 1}
-      onClick={() => setActive(!active)}
-    >
-      <boxGeometry args={[2, 2, 2]} />
-      <meshStandardMaterial
-        color={color}
-        metalness={0.3}
-        roughness={0.4}
-      />
-    </mesh>
-  );
-}
+const fragmentShader = `
+  uniform float u_time;
+  uniform vec2 u_resolution;
+  uniform vec2 u_mouse;
 
-function Platform() {
-  return (
-    <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[8, 8]} />
-      <meshStandardMaterial color="#171a24" />
-    </mesh>
-  );
-}
+  varying vec2 vUv;
 
-export default function ThreeDPage() {
-  const [color, setColor] = useState("#3b82f6");
+  void main() {
+    vec2 uv = vUv;
+
+    vec2 mouse = u_mouse / u_resolution;
+    float time = u_time * 0.15;
+
+    float wave1 = sin(uv.x * 8.0 + time * 2.0);
+    float wave2 = sin(uv.y * 10.0 - time * 1.5);
+    float wave3 = sin((uv.x + uv.y) * 12.0 + time);
+
+    float glow = (wave1 + wave2 + wave3) / 3.0;
+
+    float mouseDistance = distance(uv, mouse);
+    float mouseGlow = smoothstep(0.5, 0.0, mouseDistance);
+
+    vec3 darkBlue = vec3(0.02, 0.05, 0.12);
+    vec3 blue = vec3(0.10, 0.35, 0.85);
+    vec3 purple = vec3(0.45, 0.20, 0.75);
+
+    vec3 color = mix(darkBlue, blue, glow * 0.5 + 0.5);
+    color = mix(color, purple, mouseGlow * 0.35);
+
+    gl_FragColor = vec4(color, 1.0);
+  }
+`;
+
+function ShaderBackground() {
+  const materialRef = useRef();
+  const { size } = useThree();
+
   const [reducedMotion, setReducedMotion] = useState(false);
 
   useEffect(() => {
@@ -50,123 +56,145 @@ export default function ThreeDPage() {
       "(prefers-reduced-motion: reduce)"
     );
 
-    const updateMotionPreference = () => {
+    const updateMotion = () => {
       setReducedMotion(mediaQuery.matches);
     };
 
-    updateMotionPreference();
-
-    mediaQuery.addEventListener("change", updateMotionPreference);
+    updateMotion();
+    mediaQuery.addEventListener("change", updateMotion);
 
     return () => {
-      mediaQuery.removeEventListener("change", updateMotionPreference);
+      mediaQuery.removeEventListener("change", updateMotion);
     };
   }, []);
 
+  const uniforms = useMemo(
+    () => ({
+      u_time: { value: 0 },
+      u_resolution: { value: [size.width, size.height] },
+      u_mouse: { value: [size.width / 2, size.height / 2] },
+    }),
+    []
+  );
+
+  useEffect(() => {
+    if (materialRef.current) {
+      materialRef.current.uniforms.u_resolution.value = [
+        size.width,
+        size.height,
+      ];
+    }
+  }, [size]);
+
+  useFrame((state) => {
+    if (!materialRef.current) return;
+
+    if (!reducedMotion) {
+      materialRef.current.uniforms.u_time.value = state.clock.elapsedTime;
+    }
+
+    materialRef.current.uniforms.u_mouse.value = [
+      state.pointer.x * size.width * 0.5 + size.width * 0.5,
+      state.pointer.y * size.height * 0.5 + size.height * 0.5,
+    ];
+  });
+
+  return (
+    <mesh position={[0, 0, 0]}>
+      <planeGeometry args={[2, 2]} />
+      <shaderMaterial
+        ref={materialRef}
+        vertexShader={vertexShader}
+        fragmentShader={fragmentShader}
+        uniforms={uniforms}
+      />
+    </mesh>
+  );
+}
+
+export default function ThreeDPage() {
   return (
     <main
       style={{
         width: "100%",
-        height: "100vh",
-        background: "#0d0f12",
+        minHeight: "100vh",
         position: "relative",
+        overflow: "hidden",
+        background: "#020617",
       }}
     >
-      <div
+      <Canvas
+        orthographic
+        camera={{ position: [0, 0, 1], zoom: 1 }}
         style={{
-          position: "absolute",
-          top: "30px",
-          left: "30px",
-          zIndex: 10,
+          position: "fixed",
+          inset: 0,
+          zIndex: 0,
+        }}
+        dpr={[1, 2]}
+      >
+        <ShaderBackground />
+      </Canvas>
+
+      <section
+        style={{
+          position: "relative",
+          zIndex: 1,
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "40px 20px",
+          textAlign: "center",
           color: "white",
-          maxWidth: "600px",
         }}
       >
-        <h1>Interactive 3D Experience</h1>
-
-        <p>
-          Drag to rotate • Scroll to zoom • Change the cube color
-        </p>
-
-        <p>
-          Keyboard users can use the controls, and the color buttons provide
-          accessible labels for the 3D interaction.
-        </p>
-
-        <p>
-          {reducedMotion
-            ? "Reduced motion is enabled, so automatic animation is disabled."
-            : "Automatic animation is enabled."}
-        </p>
-
         <div
           style={{
-            display: "flex",
-            gap: "10px",
-            marginTop: "15px",
-            flexWrap: "wrap",
+            maxWidth: "800px",
+            padding: "40px",
+            borderRadius: "24px",
+            background: "rgba(2, 6, 23, 0.55)",
+            backdropFilter: "blur(10px)",
           }}
         >
-          <button
-            onClick={() => setColor("#3b82f6")}
+          <p
             style={{
-              padding: "10px 18px",
-              cursor: "pointer",
+              marginBottom: "12px",
+              color: "#93c5fd",
+              fontSize: "14px",
+              fontWeight: "600",
+              letterSpacing: "2px",
+              textTransform: "uppercase",
             }}
           >
-            Blue
-          </button>
+            Frontend AI Engineering
+          </p>
 
-          <button
-            onClick={() => setColor("#a78bfa")}
+          <h1
             style={{
-              padding: "10px 18px",
-              cursor: "pointer",
+              fontSize: "clamp(42px, 8vw, 80px)",
+              lineHeight: 1,
+              margin: "0 0 24px",
+              fontWeight: 800,
             }}
           >
-            Purple
-          </button>
+            Signature Hero
+          </h1>
 
-          <button
-            onClick={() => setColor("#3fb8af")}
+          <p
             style={{
-              padding: "10px 18px",
-              cursor: "pointer",
+              fontSize: "18px",
+              lineHeight: 1.7,
+              color: "#dbeafe",
+              margin: 0,
             }}
           >
-            Teal
-          </button>
+            A custom fullscreen GLSL shader experience built with
+            React Three Fiber.
+          </p>
         </div>
-      </div>
-
-      <Canvas camera={{ position: [4, 4, 6], fov: 50 }}>
-        <ambientLight intensity={0.8} />
-
-        <directionalLight
-          position={[5, 8, 5]}
-          intensity={2}
-        />
-
-        <pointLight
-          position={[-4, 4, -4]}
-          intensity={1}
-        />
-
-        <Cube
-          color={color}
-          reducedMotion={reducedMotion}
-        />
-
-        <Platform />
-
-        <OrbitControls
-          enablePan={false}
-          minDistance={4}
-          maxDistance={10}
-        />
-
-        <gridHelper args={[8, 8]} />
-      </Canvas>
+      </section>
     </main>
   );
 }
